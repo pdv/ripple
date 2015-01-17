@@ -1,10 +1,20 @@
 var context;
 var pads;
 
+var COLORS = {
+  GREY: "#777777",
+  RED: "#CE1836",
+  ORANGE: "F85931",
+  YELLOW: "EDB92E",
+  GREEN: "A3A948",
+  BLUE: "009989"
+} 
+
 // Canvas
-var QUALITY = 4;
+var QUALITY = 1;
 var WIDTH = Math.floor($(window).innerWidth() / QUALITY);
-var HEIGHT = Math.floor($(window).innerHeight() / QUALITY);
+var HEIGHT = Math.floor($(window).innerHeight() / QUALITY); 
+var topleftx, toplefty, padwidth;
 
 // Ripples
 var gcontext, image, data;
@@ -24,8 +34,8 @@ $(document).ready(function() {
   canvas = document.createElement('canvas');
   canvas.width = WIDTH;
   canvas.height = HEIGHT;
-  canvas.style.width = "100vw";
-  canvas.style.height = "100vh";
+  canvas.style.width = "99vw";
+  canvas.style.height = "99vh";
   container.appendChild(canvas);
 
   gcontext = canvas.getContext("2d");
@@ -34,25 +44,25 @@ $(document).ready(function() {
   image = gcontext.getImageData(0, 0, WIDTH, HEIGHT);
   data = image.data;
 
-  var mindim = Math.min(WIDTH, HEIGHT);
-  gcontext.fillStyle = "#888888";
-  var topleftx = cursorx = Math.floor((WIDTH - mindim) / 2);
-  var toplefty = cursory = Math.floor((HEIGHT - mindim) / 2);
-  var cursorx = topleftx;
-  var cursory = toplefty;
+  var mindim = Math.min(WIDTH, HEIGHT) - (200 / QUALITY);
+  topleftx = Math.floor((WIDTH - mindim) / 2);
+  toplefty = Math.floor((HEIGHT - mindim) / 2);
+  padwidth = mindim / 15;
 
-
-  for (var x = 0; x < 8; x++) {
-    cursorx += mindim / 19 + mindim / 19;
-    for (var y = 0; y < 8; y++) {
-      cursory += mindim / 19;
-      console.log("yea");
-      gcontext.fillRect(cursorx, cursory, mindim/19, mindim/19);
-      cursory += mindim / 19;
-    }
-    cursory = toplefty;
+  pads = [];
+  for (var x = 0; x < 64; x++) {
+    pads[x] = {
+      sound: null,
+      active: 0,
+      color: COLORS.GREY,
+    };
   }
-  //gcontext.fillRect(topleftx, toplefty, mindim, mindim);
+
+  drawGrid();
+
+  canvas.addEventListener('click', function(event) {
+    checkClickBox(event);
+  });
 
   buffer1 = [];
   buffer2 = [];
@@ -65,23 +75,74 @@ $(document).ready(function() {
     alert('Web Audio API is not supported in this browser');
   }
 
-  pads = new Array(64);
   navigator.requestMIDIAccess().then(success, failure);
-
-  canvas.click(function(e) {
-    var x = e.pageX
-
-
-      // HEREERERWERWER
-
-
-
-
-  });
-
 });
 
 var beingEdited = 0;
+
+// DRAWING *****************************************
+
+function drawGrid() {
+  var cursorx = topleftx;
+  var cursory = toplefty;
+
+  var idx = 0;
+  for (var x = 0; x < 8; x++) {
+    for (var y = 0; y < 8; y++) {
+      gcontext.fillStyle = pads[idx].color;
+      gcontext.fillRect(cursorx, cursory, padwidth, padwidth);
+      cursory += padwidth * 2;
+      idx++;
+    }
+    cursorx += padwidth * 2;
+    cursory = toplefty;
+  }
+}
+
+// CLICK DETECTION *********************************
+
+function checkClickBox(e) {
+  var ex = e.pageX / QUALITY;
+  var ey = e.pageY / QUALITY;
+  
+  console.log(topleftx + " " + toplefty + " " + padwidth);
+  if (ex < topleftx || ex > topleftx + 15*padwidth || 
+      ey < toplefty || ey > toplefty + 15*padwidth) {
+    return;
+  }
+
+console.log(ex + " " + ey + ": clicked");
+
+  var cursorx = topleftx;
+  var cursory = toplefty;
+
+  var idx;
+  for (var x = 0; x < 8; x++) {
+    idx = (x * 8) - 1;
+    if (ex < cursorx) return;
+    for (var y = 0; y < 8; y++) {
+      idx++;
+      if (ey < cursory) break;
+      if (ex >= cursorx && ex <= cursorx + padwidth && 
+          ey >= cursory && ey <= cursory + padwidth) {
+        padClicked(idx);
+        drawGrid();
+        return;
+      }
+      cursory += padwidth * 2;
+      
+    }
+    cursorx += padwidth * 2;
+    cursory = toplefty;
+  }
+
+}
+
+function padClicked(i) {
+  console.log(i);
+  pads[i].color = COLORS.RED;
+}
+
 
 // SOUND HANDLING **********************************
 
