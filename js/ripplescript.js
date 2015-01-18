@@ -1,17 +1,27 @@
 var context;
 var pads;
 
-var COLORS = {
-  GREY: [119, 119, 119],
-  RED: [206, 24, 54],
-  ORANGE: [248, 89, 49],
-  YELLOW: [237, 185, 46],
-  GREEN: [163, 169, 72],
-  BLUE: [0, 153, 137],
-} 
+const c_grey = 0;
+const c_red = 1;
+const c_orange = 2;
+const c_yellow = 3;
+const c_green = 4;
+const c_blue = 5;
+
+var COLORS = [
+  [119, 119, 119],
+  [206, 24, 54],
+  [248, 89, 49],
+  [237, 185, 46],
+  [163, 169, 72],
+  [0, 153, 137],
+];
+
+// Selection
+var color = c_red;
 
 // Canvas
-var QUALITY = 4;
+var QUALITY = 2;
 var WIDTH = Math.floor($(window).innerWidth() / QUALITY);
 var HEIGHT = Math.floor($(window).innerHeight() / QUALITY); 
 var topleftx, toplefty, padwidth;
@@ -52,8 +62,8 @@ $(document).ready(function() {
   for (var x = 0; x < 64; x++) {
     pads[x] = {
       sound: null,
-      active: 0,
-      color: COLORS.GREY,
+      active: [0, 0, 0, 0, 0],
+      sound_offset: x % 8
     };
   }
 
@@ -126,29 +136,36 @@ function loop() {
     var right = buffer1[i + 1];
 
     
-    var thresh = 1.5;
+    var thresh = 1;
     if (up[0] < thresh && down[0] < thresh && left[0] < thresh && right[0] < thresh) {
       continue;
     }
     
+    var overflow = 0;
     // R, G, B
     for (var j = 0; j < 3; j++) {
-      pixel[j] = ((up[j] + left[j] + down[j] + right[j]) / 2.001) - buffer2[i][j];
-      pixel[j] = pixel[j] < 0 ? 0 : pixel[j];
+      pixel[j] = ((up[j] + left[j] + down[j] + right[j]) / 2.01) - buffer2[i][j];
+      /*
+      if (pixel[j] > 255) {
+        overflow = Math.max(overflow, pixel[j] - 255);
+      }*/
+      pixel[j] = pixel[j] < 0 ? 0 : pixel[j] //> 255 ? pixel[j] -30 : pixel[j];
       buffer2[i][j] = pixel[j];
       pixel[j] = 255 - pixel[j];
     }
-
-    var psize = 5;
-    for (var j = 0; j < psize; j++) {
-      for (var k = 0; k < psize; k++) {
-        var idx = (j * WIDTH + (i + k)) * 4;
-        data[idx] = pixel[0];
-        data[idx + 1] = pixel[1];
-        data[idx + 2] = pixel[2];
-      }
+    /*
+    if (overflow != 0) {
+      pixel[0] += overflow;
+      pixel[1] += overflow;
+      pixel[2] += overflow; 
     }
-    
+    */
+
+    var idx = i * 4;
+    data[idx] = pixel[0];
+    data[idx + 1] = pixel[1];
+    data[idx + 2] = pixel[2];
+    data[idx + 3] = 255;
   }
   tempbuffer = buffer1;
   buffer1 = buffer2;
@@ -163,8 +180,10 @@ function loop() {
 function playbeat(beat) {
   console.log(beat);
   for (var i = beat * 8; i < beat * 8 + 8; i++) {
-    if (pads[i].active != 0) {
-      drop(i, pads[i].color);
+    for (var j = 0; j < 5; j++) {
+      if (pads[i].active[j] != 0) {
+        drop(i, COLORS[j]);
+      }
     }
   }
 }
@@ -175,11 +194,45 @@ function drawGrid() {
   var cursorx = topleftx;
   var cursory = toplefty;
 
+  var cactive = COLORS[color];
+  var filled = 'rgb(' + cactive[0] + ',' + cactive[1] + ',' + cactive[2] + ')';
+
   var idx = 0;
+
+  // Color selectors
+  /*
+  cursorx += padwidth * 2 * 3;
+  for (var j = 0; j < 5; j++) {
+    bcontext.beginPath();
+    bcontext.arc(cursorx + padwidth/2, cursory + padwidth/2, padwidth/3, 0, 2*Math.PI);
+    if (j == color) {
+      bcontext.fillStyle = filled;
+      bcontext.fill();
+    } else {
+      bcontext.strokeStyle = 'rgb(' + COLORS[j][0] + ',' + COLORS[j][1] + ',' + COLORS[j][2] + ')';
+      bcontext.stroke();
+    }
+    bcontext.closePath();
+    cursorx += padwidth * 2;
+  }
+  cursory += padwidth * 2;
+  cursorx = topleftx;
+  */
   for (var x = 0; x < 8; x++) {
     for (var y = 0; y < 8; y++) {
-      bcontext.fillStyle = 'rgb(' + pads[idx].color[0] + ',' + pads[idx].color[1] + ',' + pads[idx].color[2] + ')';
-      bcontext.fillRect(cursorx, cursory, padwidth, padwidth);
+      bcontext.clearRect(cursorx, cursory, padwidth, padwidth);
+      if (pads[idx].active[color]) {
+        bcontext.fillStyle = filled;
+      } else {
+        bcontext.fillStyle = '#999';
+      }
+      bcontext.beginPath();
+      bcontext.arc(cursorx + padwidth/2, cursory + padwidth/2, padwidth/3, 0, 2*Math.PI);
+      bcontext.fill();
+      bcontext.closePath();
+      
+
+      //bcontext.fillRect(cursorx, cursory, padwidth, padwidth);
       cursory += padwidth * 2;
       idx++;
     }
@@ -188,13 +241,25 @@ function drawGrid() {
   }
 }
 
-function drop(i, color) {
+function drop(i, cdrop) {
   var cx = topleftx + (padwidth/2) + 2 * padwidth * Math.floor(i/8.0); 
   var cy = toplefty + (padwidth/2) + 2 * padwidth * (i % 8);
   var dropidx = Math.floor(cx / QUALITY) + (Math.floor(cy / QUALITY) * WIDTH);
-  buffer1[dropidx][0] = 255 - color[0];
-  buffer1[dropidx][1] = 255 - color[1];
-  buffer1[dropidx][2] = 255 - color[2];
+  
+  var spacing = 1;
+  var dropsize = padwidth / 8;
+  var dsint = Math.floor(dropsize);
+  for (var x = -dsint; x < dsint+1; x+=spacing) {
+    for (var y = -dsint; y < dsint+1; y+=spacing) {
+      if (x*x + y*y > dsint*dsint) continue;
+      var fade = (x*x + y*y) / (6.0 * dsint*dsint);
+      for (var rgb = 0; rgb < 3; rgb++) {
+        var col = cdrop[rgb];
+        col += (255.0-col) * fade;
+        buffer1[dropidx + x + y*WIDTH][rgb] = 255 - col;
+      }
+    }
+  }
 }
 
 // CLICK DETECTION *********************************
@@ -236,17 +301,11 @@ console.log(ex + " " + ey + ": clicked");
 
 function padClicked(i) {
   console.log(i);
-  if (pads[i].active == 1) {
-    pads[i].color = COLORS.BLUE;
-    pads[i].active = 2;
-    drop(i, pads[i].color);
-  } else if (pads[i].active == 2) {
-    pads[i].color = COLORS.GREY;
-    pads[i].active = 0;
+  if (pads[i].active[color] == 1) {
+    pads[i].active[color] = 0;
   } else {
-    pads[i].color = COLORS.RED;
-    pads[i].active = 1;
-    drop(i, pads[i].color);
+    pads[i].active[color] = 1;
+    drop(i, COLORS[color]);
   }
   drawGrid();
 }
