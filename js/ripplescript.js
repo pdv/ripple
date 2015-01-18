@@ -8,6 +8,8 @@ const c_yellow = 3;
 const c_green = 4;
 const c_blue = 5;
 
+// (this would be much cleaner as a single object but no time)
+
 var COLORS = [
   [119, 119, 119],
   [206, 24, 54],
@@ -17,14 +19,16 @@ var COLORS = [
   [0, 153, 137],
 ];
 
-var SOUNDS = [
+var soundURLs = [
   "",
-  "red.wav",
-  "orange.wav",
-  "yellow.wav",
-  "green.wav",
-  "blue.wav"
+  "audio/red.wav",
+  "audio/orange.wav",
+  "audio/yellow.wav",
+  "audio/green.wav",
+  "audio/blue.wav"
 ];
+
+var soundBuffers = [null, null, null, null, null, null];
 
 // Selection
 var color = c_red;
@@ -87,6 +91,9 @@ $(document).ready(function() {
   } catch(e) {
     alert('Web Audio API is not supported in this browser');
   }
+  for (var x = 1; x < 6; x++) {
+    loadSound(x, soundURLs[x]);
+  }
 
   navigator.requestMIDIAccess().then(success, failure);
   setInterval(loop, 1000 / 60);
@@ -146,7 +153,7 @@ function loop() {
 
     
     var thresh = 1;
-    if (up[0] < thresh && down[0] < thresh && left[0] < thresh && right[0] < thresh) {
+    if (up[0] < thresh && down[1] < thresh && left[1] < thresh && right[2] < thresh) {
       continue;
     }
     
@@ -187,9 +194,13 @@ function loop() {
 // ON BEAT *****************************************
 
 function playbeat(beat) {
-  console.log(beat);
   for (var i = beat * 8; i < beat * 8 + 8; i++) {
     drop(i);
+    for (var j = 1; j < 6; j++) {
+      if (pads[i].active[j]) {
+        playSound(j, i % 8);
+      }
+    }
   }
 }
 
@@ -205,8 +216,7 @@ function drawGrid() {
   var idx = 0;
 
   // Color selectors
-  cursorx += padwidth * 2 * 2;
-  for (var j = 0; j < 6; j++) {
+  for (var j = -2; j < 6; j++) {
     bcontext.clearRect(cursorx, cursory, padwidth, padwidth);
     bcontext.beginPath();
     bcontext.arc(cursorx + padwidth/2, cursory + padwidth/2, padwidth/3, 0, 2*Math.PI);
@@ -214,7 +224,8 @@ function drawGrid() {
       bcontext.fillStyle = filled;
       bcontext.fill();
     } else {
-      var scolor = 'rgb(' + COLORS[j][0] + ',' + COLORS[j][1] + ',' + COLORS[j][2] + ')';
+      var col = j > 0 ? COLORS[j] : COLORS[0];
+      var scolor = 'rgb(' + col[0] + ',' + col[1] + ',' + col[2] + ')';
       bcontext.strokeStyle = scolor;
       bcontext.lineWidth = -10;
       bcontext.stroke();
@@ -249,8 +260,6 @@ function drawGrid() {
 }
 
 function drop(i) {
-  
-
   var cx = topleftx + (padwidth/2) + 2 * padwidth * Math.floor(i/8.0); 
   var cy = toplefty + 2*padwidth + (padwidth/2) + 2 * padwidth * (i % 8);
   var dropidx = Math.floor(cx / QUALITY) + (Math.floor(cy / QUALITY) * WIDTH);
@@ -317,7 +326,6 @@ function checkClickBox(e) {
           return;
         }
         color = x;
-        console.log("changing colors to: " + x);
         drawGrid();
         return;
       }
@@ -350,7 +358,6 @@ function checkClickBox(e) {
 }
 
 function padClicked(i) {
-  console.log(i);
   if (pads[i].active[color] == 1) {
     pads[i].active[color] = 0;
   } else {
@@ -371,46 +378,25 @@ function loadSound(i, url) {
   request.onload = function() {
     context.decodeAudioData(
       request.response, 
-      function(buffer) { pads[i].buffer = buffer; },
+      function(buffer) { soundBuffers[i] = buffer; },
       onError
     )
   }
 
+  console.log("Loading: " + url);
   request.send();
-  $('#' + i).html('<span class="pad-label">' + pads[i].name + '</span>');
 }
 
 function onError() {
   alert('Something went wrong');
 }
 
-function playSound(i, delay) {
-  if (!pads[i].buffer || i == -1) return;
+function playSound(i, starttime) {
+  if (!soundBuffers[i]) return;
   var source = context.createBufferSource();
-  source.buffer = pads[i].buffer;
-  var gainNode = context.createGain();
-  source.connect(gainNode);
-  gainNode.connect(context.destination);
-  gainNode.gain.value = pads[i].gain;
-  source.playbackRate.value = pads[i].pitch;
-  source.start(delay);
-
-  if (recording) {
-    var newBeat = Math.floor(beat / interval);
-    if (loopTimer.remaining < ((60000 / bpm) / (quant / 4)) / 2) {
-      newBeat += interval;
-    }
-    for (j = 0; j < 4; j++) {
-      if (queue[newBeat][j] == i) {
-        return;
-      } else if (queue[newBeat][j] == -1) {
-        queue[newBeat][j] = i;
-        return;
-      }
-
-    }
-  }
-
+  source.buffer = soundBuffers[i];
+  source.connect(context.destination);
+  source.start(0, starttime * 2 + 0.005, 1);
 }
 
 
@@ -506,304 +492,4 @@ function success(midiAccess) {
 function failure( error ) {
   console.log("Failed to initialize MIDI");
   console.log((error.code==1) ? "permission denied" : ("error code " + error.code));
-}
-
-
-// UPLOADS ***********************************
-
-function dragDropUpload(i) {
-  var trigger = $('#' + i);
-  uploading = i;
-  
-  // Cancel default actions for dragover and dragenter
-  $('#' + i).on(
-      'dragover',
-      function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-      }
-  )
-  $('#' + i).on(
-      'dragenter',
-      function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-      }
-  )
-
-  // Drop
-  $('#' + i).on(
-      'drop',
-      function(e){
-          if(e.originalEvent.dataTransfer){
-              var files = e.originalEvent.dataTransfer.files;
-              if(files.length) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleFiles(files, i);
-              }   
-          }
-      }
-  );
-}
-
-function handleFiles(files, i) {
-  window.URL = window.URL || window.webkitURL;
-  var file = files[0];
-  pads[i].name = prompt("Enter a name for this sample","Untitled");
-  loadSound(i, window.URL.createObjectURL(file));
-  window.URL.revokeObjectURL(this.arc);
-}
-
-// ********** CONTROLS ********************
-
-function changeVolume (element) {
-  pads[beingEdited].gain = element.value;
-  $('#vol-label').html("Volume    " + Math.floor(element.value*100) + "%");
-}
-
-function changePitch(element) {
-  pads[beingEdited].pitch = element.value
-  $('#detune-label').html("Tune    " + Math.floor((element.value-1)*133.34));
-}
-
-function modeSwitch(m) {
-  editMode = m;
-  if (!editMode) {
-    $('#editmode').css("background-color", "white");
-    $('#perfmode').css("background-color", "#FF9900");
-    $('#perfmode').css("border", "2px solid #FF9900");
-    $('#editmode').css("border", "2px solid #DDD;");
-  } else {
-     $('#editmode').css("background-color", "#FF9900");
-     $('#perfmode').css("background-color", "white");
-     $('#editmode').css("border", "2px solid #FF9900");
-     $('#perfmode').css("border", "2px solid #DDD");
-  }
-}
-
-// *************** RECORDING ***************************
-
-var length = 2;
-var quant = 8;
-var bpm = 120;
-var queue = new Array(16);
-var recording = false;
-var beat = 0;
-var playing = false;
-var paused = false;
-var loopTimer = $.timer(playQueue, (60000 / bpm) / (quant * 2), false);
-var quantlev = [0, 32, 16, 8, 4];
-var lastpressedstop = false;
-var interval = 1;
-var counterTimer = $.timer(updateCounter, (60000 / bpm) / 4);
-var sixteenths = 0;
-
-function bindConsole() {
-
-  // LENGTH
-  for (var i = 1; i < 5; i++) {
-    $('#' + i + 'bar').click(function() {
-      for (var j = 1; j < 5; j++) {
-        $('#' + j + 'bar').removeClass("active");
-      }
-      $(this).addClass("active");
-
-      if (playing) {
-        counterTimer.stop();
-        loopTimer.stop();
-        sixteenths = 0;
-        beat = 0;
-        loopTimer.play();
-        counterTimer.play();
-        resizeQueue($(this).attr("id")[0]);
-      } else {
-        length = $(this).attr("id")[0];
-        resetQueue();
-      }
-      lastpressedstop = false;
-    });
-  }
-
-  // QUANTIZATION
-  for (var i = 1; i < 5; i++) {
-    $('#' + i + 'quant').click(function() {
-      for (var j = 1; j < 5; j++) {
-        $('#' + j + 'quant').removeClass("active");
-      }
-      $(this).addClass("active");
-      newquant = quantlev[$(this).attr("id")[0]];
-      if (playing) {
-        loopTimer.stop();
-        counterTimer.stop();
-        sixteenths = 0;
-        beat = 0; 
-        reQuant(newquant);
-        loopTimer.play();
-        counterTimer.play();
-      } else {
-        quant = newquant;
-        resetQueue();
-      }
-      lastpressedstop = false;
-    });
-
-  }
-
-
-  // Play
-  $('#play').mousedown(function() {
-    if (playing) {
-      loopTimer.stop();
-    }
-
-    if ($(this).attr("class") != "active") {
-      $(this).addClass("active");
-    }
-    $('#pause').removeClass("active");
-
-    playing = true;
-    if (!paused) {
-      sixteenths = 0;
-      beat = 0;
-    }
-    paused = false;
-    playQueue();
-    loopTimer = $.timer(playQueue, (60000 / bpm) / (quant / 4), false);
-    counterTimer = $.timer(updateCounter, (60000 / bpm) / 4);
-    loopTimer.play();
-    counterTimer.play();
-    lastpressedstop = false;
-  });
-
-  // Pause
-  $('#pause').click(function() {
-    if (paused) {
-      loopTimer.play();
-      counterTimer.play();
-      $(this).removeClass("active");
-      $('#play').addClass("active");
-      paused = false;
-    } else {
-      if (playing) {
-        loopTimer.pause();
-        counterTimer.pause();
-        $(this).addClass("active");
-        $('#play').removeClass("active");
-        paused = true;
-      }
-    }
-    lastpressedstop = false;
-  })
-
-  // Record
-  $('#record').click(function() {
-    if ($(this).hasClass("active")) {
-      $(this).removeClass("active");
-      recording = false;
-    } else {
-      $(this).addClass("active");
-      recording = true;
-    }
-  });
-
-  // Stop
-  $('#stop').click(function() {
-    if ($('#play').addClass("active")) {
-      $('#play').removeClass("active");
-      $('#pause').removeClass("active");
-      beat = 0;
-      sixteenths = 0;
-      playing = false;
-      paused = false;
-      loopTimer.stop();
-      counterTimer.stop();
-    }
-
-    if (lastpressedstop) {
-      resetQueue();
-    } else {
-      lastpressedstop = true;
-    }
-
-  })
-}
-
-function resetQueue() {
-  console.log("cleared, " + (quant*length));
-  for (var i = 0; i < (quant * length); i++) {
-    queue[i] = [-1, -1, -1, -1, -1];
-  }
-}
-
-function playQueue() {
-  console.log("beat: " + beat + " ||| " + queue[beat][0] + " " + queue[beat][1] + " " + queue[beat][2] + " " + queue[beat][3]);
-  for (var i = 0; i < 5; i++) {
-    if (queue[beat][i] != -1) {
-      playSound(queue[beat][i]);
-      $('#' + queue[beat][i]).css({'background-color': '#FF9900'});
-      var colorTimer = window.setTimeout(function() {
-        $('.trigger').css({'background-color': 'white'});
-      }, 100);
-    }
-  }
-
-  beat++;
-  if (beat >= (quant * length)) {
-    beat = 0;
-  }
-  
-}
-
-function updateCounter() {
-  sixteenths++;
-  bars = (Math.floor(sixteenths / 16) % length) + 1;
-  $('#counter').html(bars + "." + (Math.floor(sixteenths / 4) % 4 + 1) + "." + (sixteenths % 4 + 1));
-
-}
-
-function changeBPM(element) {
-  bpm = element.value;
-  $('#bpm-label').html(bpm + " BPM");
-  loopTimer.set({time: (60000 / bpm) / (quant / 4)});
-  counterTimer.set({time: (60000 / bpm) / 4});
-}
-
-function resizeQueue(newSize) {
-  if (newSize == length) return;
-  if (newSize * quant > queue.length) {
-    var newQueue = new Array(newSize * quant);
-    for (var i = 0; i < (newSize * quant); i++) {
-      if (i < queue.size) {
-        newQueue[i] = queue[i];
-      } else {
-        newQueue[i] = [-1, -1, -1, -1, -1];
-      }
-    }
-  } else {
-    var newQueue = queue.slice(0, newSize * quant);
-  }
-  queue = newQueue;
-  length = newSize;
-}
-
-function reQuant(newQuant) {
-  if (newQuant == quant) return;
-  if (newQuant < quant) {
-    interval = (quant / newQuant);
-    return;
-  } else {
-    var newQueue = new Array(length * newQuant);
-    for (var i = 0; i < queue.length; i++) {
-      newQueue[i * (newQuant / quant)] = queue[i];
-    }
-    for (var i = 0; i < newQueue.length; i++) {
-      if (!newQueue[i]) {
-        newQueue[i] = [-1, -1, -1, -1, -1];
-      }
-    }
-    queue = newQueue;
-  }
-  quant = newQuant;
-  loopTimer.set({time: (60000 / bpm) / (quant / 4)});
 }
