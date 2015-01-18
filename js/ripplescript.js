@@ -129,17 +129,19 @@ function initCanvases() {
   padwidth = ~~(mindim / 17 + 0.5);
 }
 
-var frame = 0;
+var frame = 0, beat = 0;
 
 function loop() {
 
-  if (frame % 30 == 0) {
-    if (frame == (30 * 8)) {
-      frame = 0;
-    }
-    playbeat(frame / 30);
-  }
+  var framesPerBeat = 3600 / bpm;
   frame++;
+  if (frame > framesPerBeat) {
+    beat++;
+    if (beat >= 8) beat = 0;
+    playbeat(beat);
+    frame = 0;
+  }
+  
 
   var pixel = [0, 0, 0];
   var iMax = (WIDTH * HEIGHT) - WIDTH;
@@ -152,7 +154,7 @@ function loop() {
     var right = buffer1[i + 1];
 
     
-    var thresh = 1;
+    var thresh = 5;
     if (up[0] < thresh && down[1] < thresh && left[1] < thresh && right[2] < thresh) {
       continue;
     }
@@ -215,9 +217,9 @@ function drawGrid() {
 
   var idx = 0;
 
-  // Color selectors
+  // BMP, CLear, Color selectors
   for (var j = -2; j < 6; j++) {
-    bcontext.clearRect(cursorx, cursory, padwidth, padwidth);
+    bcontext.clearRect(cursorx, cursory, padwidth*2, padwidth);
     bcontext.beginPath();
     bcontext.arc(cursorx + padwidth/2, cursory + padwidth/2, padwidth/3, 0, 2*Math.PI);
     if (j == color) {
@@ -231,6 +233,22 @@ function drawGrid() {
       bcontext.stroke();
     }
     bcontext.closePath();
+
+
+    if (j <= 0) {
+      bcontext.font = "bold 20px Verdana";
+      bcontext.fillStyle = "rgb(119, 119, 119)";
+      bcontext.textAlign = "center";
+      if (j == -2) {
+        bcontext.fillText("–", cursorx + padwidth/2, cursory + padwidth/2 + 5);
+        bcontext.font = "14px Verdana";
+        bcontext.fillText(bpm, cursorx + padwidth*1.5, cursory + padwidth/2 + 5);
+      } else if (j == -1) {
+        bcontext.fillText("+", cursorx + padwidth/2, cursory + padwidth/2 + 6);
+      } else if (j == 0) {
+        bcontext.fillText("x", cursorx + padwidth/2, cursory + padwidth/2 + 5);
+      }
+    }
     cursorx += padwidth * 2;
   }
   
@@ -317,7 +335,23 @@ function checkClickBox(e) {
   
   // Controls
   if (ey > toplefty && ey < toplefty + padwidth) {
-    var cursorx = topleftx + padwidth * 2 * 2;
+    var cursorx = topleftx;
+
+    if (ex > cursorx && ex < cursorx + padwidth) {
+      bpm-=10;
+      frame = 0;
+      drawGrid();
+      return;
+    } 
+    cursorx += 2 * padwidth;
+    if (ex > cursorx && ex < cursorx + padwidth) {
+      bpm+=10;
+      frame = 0;
+      drawGrid();
+      return;
+    }
+    cursorx += 2 * padwidth;
+
     for (var x = 0; x < 6; x++) { 
       if (ex > cursorx && ex < cursorx + padwidth) {
         if (x == 0) {
