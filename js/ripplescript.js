@@ -34,7 +34,7 @@ var soundBuffers = [null, null, null, null, null, null];
 var color = c_red;
 
 // Canvas
-var QUALITY = 2;
+var QUALITY = 4;
 var WIDTH = Math.floor($(window).innerWidth() / QUALITY);
 var HEIGHT = Math.floor($(window).innerHeight() / QUALITY); 
 var topleftx, toplefty, padwidth;
@@ -54,7 +54,7 @@ var container, bcanvas, rcanvas;
 // Init
 $(document).ready(function() {
 
-  meter = new FPSMeter();
+  //meter = new FPSMeter();
 
   initCanvases();
 
@@ -82,6 +82,7 @@ $(document).ready(function() {
 
   navigator.requestMIDIAccess().then(success, failure);
   drawGrid();
+  drawPads();
 
   bcanvas.addEventListener('click', checkClickBox, false);
 
@@ -93,7 +94,7 @@ $(document).ready(function() {
     alert('Web Audio API is not supported in this browser');
   }
   for (var x = 1; x < 6; x++) {
-    //loadSound(x, soundURLs[x]);
+    loadSound(x, soundURLs[x]);
   }
 
   
@@ -160,6 +161,7 @@ function loop() {
       continue;
     }
     
+    
     var overflow = 0;
     // R, G, B
     for (var j = 0; j < 3; j++) {
@@ -191,7 +193,7 @@ function loop() {
   buffer2 = tempbuffer;
 
   rcontext.putImageData(image, 0, 0);
-  meter.tick();
+  //meter.tick();
 }
 
 // ON BEAT *****************************************
@@ -201,7 +203,7 @@ function playbeat(beat) {
     drop(i);
     for (var j = 1; j < 6; j++) {
       if (pads[i].active[j]) {
-        //playSound(j, i % 8);
+        playSound(j, i % 8);
       }
     }
   }
@@ -216,8 +218,6 @@ function drawGrid() {
   var cactive = COLORS[color];
   var filled = 'rgb(' + cactive[0] + ',' + cactive[1] + ',' + cactive[2] + ')';
 
-  var idx = 0;
-
   // BMP, CLear, Color selectors
   for (var j = -2; j < 6; j++) {
     bcontext.clearRect(cursorx, cursory, padwidth*2, padwidth);
@@ -226,8 +226,9 @@ function drawGrid() {
     if (j == color) {
       bcontext.fillStyle = filled;
       bcontext.fill();
+      //console.log(j);
       if (output)
-        output.send([0x90, 107, 0x7f]);
+        output.send([0x90, 107 + (j-1), 0x7f]);
     } else {
       var col = j > 0 ? COLORS[j] : COLORS[0];
       var scolor = 'rgb(' + col[0] + ',' + col[1] + ',' + col[2] + ')';
@@ -235,7 +236,7 @@ function drawGrid() {
       bcontext.lineWidth = -10;
       bcontext.stroke();
       if (output) 
-        output.send([0x90, 108, 0x00]);
+        output.send([0x90, 107 + (j-1), 0x00]);
     }
     bcontext.closePath();
 
@@ -256,16 +257,20 @@ function drawGrid() {
     }
     cursorx += padwidth * 2;
   }
-  
+}
+
+function drawPads() {
   // Pads
-  cursory += padwidth * 2;
-  cursorx = topleftx;
-  
+  var cursory = toplefty + padwidth * 2;
+  var cursorx = topleftx;
+  var idx = 0;
+  var cactive = COLORS[color];
+
   for (var x = 0; x < 8; x++) {
     for (var y = 0; y < 8; y++) {
       bcontext.clearRect(cursorx, cursory, padwidth, padwidth);
       if (pads[idx].active[color]) {
-        bcontext.fillStyle = filled;
+        bcontext.fillStyle = 'rgb(' + cactive[0] + ',' + cactive[1] + ',' + cactive[2] + ')';
         if (output)
           output.send([0x90, Math.floor(idx / 8) + 16*(idx%8), 0x7f]);
       } else {
@@ -292,13 +297,13 @@ function drop(i) {
   var dropidx = Math.floor(cx / QUALITY) + (Math.floor(cy / QUALITY) * WIDTH);
   
   // Get color
-  var cdrop = [0, 0, 0];
+  var cdrop = [255, 255, 255];
   var ccount = 0;
   for (var j = 1; j < 6; j++) {
     if (pads[i].active[j] != 0) {
-      cdrop[0] += COLORS[j][0];
-      cdrop[1] += COLORS[j][1];
-      cdrop[2] += COLORS[j][2];
+      cdrop[0] *= 1 - COLORS[j][0] / 255.0;
+      cdrop[1] *= 1 - COLORS[j][1] / 255.0;
+      cdrop[2] *= 1 - COLORS[j][2] / 255.0;
       ccount++;
     }
   }
@@ -306,7 +311,7 @@ function drop(i) {
 
 
   var spacing = 1;
-  var dropsize = padwidth / 7.0;
+  var dropsize = padwidth / 15.0;
   var dsint = Math.floor(dropsize);
   for (var x = -dsint; x < dsint+1; x+=spacing) {
     for (var y = -dsint; y < dsint+1; y+=spacing) {
@@ -314,7 +319,7 @@ function drop(i) {
       var fade = (x*x + y*y) / (6.0 * dsint*dsint);
       
       for (var rgb = 0; rgb < 3; rgb++) {
-        var col = cdrop[rgb] / ccount;
+        var col = (255-cdrop[rgb]) / ccount;
         col += (255.0-col) * fade;
         buffer1[dropidx + x + y*WIDTH][rgb] = 255 - col;
       }
@@ -365,11 +370,12 @@ function checkClickBox(e) {
       if (ex > cursorx && ex < cursorx + padwidth) {
         if (x == 0) {
           resetAll();
-          drawGrid();
+          drawPads();
           return;
         }
         color = x;
         drawGrid();
+        drawPads();
         return;
       }
       cursorx += 2 * padwidth;
@@ -407,7 +413,7 @@ function padClicked(i) {
     pads[i].active[color] = 1;
     //drop(i);
   }
-  drawGrid();
+  drawPads();
 }
 
 
@@ -460,9 +466,6 @@ function handleMIDIMessage(ev) {
   
   var trig = parseInt(ev.data[1].toString());
 
-  if (trig == 120) {
-    select = true;
-  }
   console.log(trig);
   // Transposing the trigger number
   trig = (8 * (trig%16)) + Math.floor(trig/16);
