@@ -17,6 +17,15 @@ var COLORS = [
   [0, 153, 137],
 ];
 
+var SOUNDS = [
+  "",
+  "red.wav",
+  "orange.wav",
+  "yellow.wav",
+  "green.wav",
+  "blue.wav"
+];
+
 // Selection
 var color = c_red;
 
@@ -62,7 +71,7 @@ $(document).ready(function() {
   for (var x = 0; x < 64; x++) {
     pads[x] = {
       sound: null,
-      active: [0, 0, 0, 0, 0],
+      active: [0, 0, 0, 0, 0, 0],
       sound_offset: x % 8
     };
   }
@@ -110,7 +119,7 @@ function initCanvases() {
   var mindim = Math.min(bwidth, bheight) - 200;
   topleftx = Math.floor((bwidth - mindim) / 2);
   toplefty = Math.floor((bheight - mindim) / 2);
-  padwidth = ~~(mindim / 15 + 0.5);
+  padwidth = ~~(mindim / 17 + 0.5);
 }
 
 var frame = 0;
@@ -180,11 +189,7 @@ function loop() {
 function playbeat(beat) {
   console.log(beat);
   for (var i = beat * 8; i < beat * 8 + 8; i++) {
-    for (var j = 0; j < 5; j++) {
-      if (pads[i].active[j] != 0) {
-        drop(i, COLORS[j]);
-      }
-    }
+    drop(i);
   }
 }
 
@@ -200,24 +205,28 @@ function drawGrid() {
   var idx = 0;
 
   // Color selectors
-  /*
-  cursorx += padwidth * 2 * 3;
-  for (var j = 0; j < 5; j++) {
+  cursorx += padwidth * 2 * 2;
+  for (var j = 0; j < 6; j++) {
+    bcontext.clearRect(cursorx, cursory, padwidth, padwidth);
     bcontext.beginPath();
     bcontext.arc(cursorx + padwidth/2, cursory + padwidth/2, padwidth/3, 0, 2*Math.PI);
     if (j == color) {
       bcontext.fillStyle = filled;
       bcontext.fill();
     } else {
-      bcontext.strokeStyle = 'rgb(' + COLORS[j][0] + ',' + COLORS[j][1] + ',' + COLORS[j][2] + ')';
+      var scolor = 'rgb(' + COLORS[j][0] + ',' + COLORS[j][1] + ',' + COLORS[j][2] + ')';
+      bcontext.strokeStyle = scolor;
+      bcontext.lineWidth = -10;
       bcontext.stroke();
     }
     bcontext.closePath();
     cursorx += padwidth * 2;
   }
+  
+  // Pads
   cursory += padwidth * 2;
   cursorx = topleftx;
-  */
+  
   for (var x = 0; x < 8; x++) {
     for (var y = 0; y < 8; y++) {
       bcontext.clearRect(cursorx, cursory, padwidth, padwidth);
@@ -230,34 +239,57 @@ function drawGrid() {
       bcontext.arc(cursorx + padwidth/2, cursory + padwidth/2, padwidth/3, 0, 2*Math.PI);
       bcontext.fill();
       bcontext.closePath();
-      
 
-      //bcontext.fillRect(cursorx, cursory, padwidth, padwidth);
       cursory += padwidth * 2;
       idx++;
     }
     cursorx += padwidth * 2;
-    cursory = toplefty;
+    cursory = toplefty + padwidth * 2;
   }
 }
 
-function drop(i, cdrop) {
+function drop(i) {
+  
+
   var cx = topleftx + (padwidth/2) + 2 * padwidth * Math.floor(i/8.0); 
-  var cy = toplefty + (padwidth/2) + 2 * padwidth * (i % 8);
+  var cy = toplefty + 2*padwidth + (padwidth/2) + 2 * padwidth * (i % 8);
   var dropidx = Math.floor(cx / QUALITY) + (Math.floor(cy / QUALITY) * WIDTH);
   
+  // Get color
+  var cdrop = [0, 0, 0];
+  var ccount = 0;
+  for (var j = 1; j < 6; j++) {
+    if (pads[i].active[j] != 0) {
+      cdrop[0] += COLORS[j][0];
+      cdrop[1] += COLORS[j][1];
+      cdrop[2] += COLORS[j][2];
+      ccount++;
+    }
+  }
+  if (ccount == 0) return;
+
+
   var spacing = 1;
-  var dropsize = padwidth / 8;
+  var dropsize = padwidth / 7.0;
   var dsint = Math.floor(dropsize);
   for (var x = -dsint; x < dsint+1; x+=spacing) {
     for (var y = -dsint; y < dsint+1; y+=spacing) {
       if (x*x + y*y > dsint*dsint) continue;
       var fade = (x*x + y*y) / (6.0 * dsint*dsint);
+      
       for (var rgb = 0; rgb < 3; rgb++) {
-        var col = cdrop[rgb];
+        var col = cdrop[rgb] / ccount;
         col += (255.0-col) * fade;
         buffer1[dropidx + x + y*WIDTH][rgb] = 255 - col;
       }
+    }
+  }
+}
+
+function resetAll() {
+  for (var i = 0; i < 64; i++) {
+    for (var j = 1; j < 6; j++) {
+      pads[i].active[j] = 0;
     }
   }
 }
@@ -266,18 +298,36 @@ function drop(i, cdrop) {
 
 function checkClickBox(e) {
   var ex = ~~(e.pageX + 0.5);
-  var ey = ~~(e.pageY + 1.5);
+  var ey = ~~(e.pageY + 0.5);
   
-  console.log(topleftx + " " + toplefty + " " + padwidth);
   if (ex < topleftx || ex > topleftx + 15*padwidth || 
-      ey < toplefty || ey > toplefty + 15*padwidth) {
+      ey < toplefty || ey > toplefty + 17*padwidth) {
     return;
   }
 
-console.log(ex + " " + ey + ": clicked");
+  
+  // Controls
+  if (ey > toplefty && ey < toplefty + padwidth) {
+    var cursorx = topleftx + padwidth * 2 * 2;
+    for (var x = 0; x < 6; x++) { 
+      if (ex > cursorx && ex < cursorx + padwidth) {
+        if (x == 0) {
+          resetAll();
+          drawGrid();
+          return;
+        }
+        color = x;
+        console.log("changing colors to: " + x);
+        drawGrid();
+        return;
+      }
+      cursorx += 2 * padwidth;
+    }
+    return;
+  }
 
   var cursorx = topleftx;
-  var cursory = toplefty;
+  var cursory = toplefty + padwidth * 2;
 
   var idx;
   for (var x = 0; x < 8; x++) {
@@ -294,7 +344,7 @@ console.log(ex + " " + ey + ": clicked");
       cursory += padwidth * 2;
     }
     cursorx += padwidth * 2;
-    cursory = toplefty;
+    cursory = toplefty + padwidth * 2;
   }
 
 }
@@ -305,7 +355,7 @@ function padClicked(i) {
     pads[i].active[color] = 0;
   } else {
     pads[i].active[color] = 1;
-    drop(i, COLORS[color]);
+    //drop(i);
   }
   drawGrid();
 }
