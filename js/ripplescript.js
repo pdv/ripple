@@ -80,6 +80,7 @@ $(document).ready(function() {
     };
   }
 
+  navigator.requestMIDIAccess().then(success, failure);
   drawGrid();
 
   bcanvas.addEventListener('click', checkClickBox, false);
@@ -92,10 +93,10 @@ $(document).ready(function() {
     alert('Web Audio API is not supported in this browser');
   }
   for (var x = 1; x < 6; x++) {
-    loadSound(x, soundURLs[x]);
+    //loadSound(x, soundURLs[x]);
   }
 
-  navigator.requestMIDIAccess().then(success, failure);
+  
   setInterval(loop, 1000 / 60);
 
 });
@@ -154,15 +155,15 @@ function loop() {
     var right = buffer1[i + 1];
 
     
-    var thresh = 5;
-    if (up[0] < thresh && down[1] < thresh && left[1] < thresh && right[2] < thresh) {
+    var thresh = 1;
+    if (up[0] < thresh && down[0] < thresh && left[0] < thresh && right[0] < thresh) {
       continue;
     }
     
     var overflow = 0;
     // R, G, B
     for (var j = 0; j < 3; j++) {
-      pixel[j] = ((up[j] + left[j] + down[j] + right[j]) / 2.01) - buffer2[i][j];
+      pixel[j] = ((up[j] + left[j] + down[j] + right[j]) / 2.005) - buffer2[i][j];
       /*
       if (pixel[j] > 255) {
         overflow = Math.max(overflow, pixel[j] - 255);
@@ -200,7 +201,7 @@ function playbeat(beat) {
     drop(i);
     for (var j = 1; j < 6; j++) {
       if (pads[i].active[j]) {
-        playSound(j, i % 8);
+        //playSound(j, i % 8);
       }
     }
   }
@@ -225,12 +226,16 @@ function drawGrid() {
     if (j == color) {
       bcontext.fillStyle = filled;
       bcontext.fill();
+      if (output)
+        output.send([0x90, 107, 0x7f]);
     } else {
       var col = j > 0 ? COLORS[j] : COLORS[0];
       var scolor = 'rgb(' + col[0] + ',' + col[1] + ',' + col[2] + ')';
       bcontext.strokeStyle = scolor;
       bcontext.lineWidth = -10;
       bcontext.stroke();
+      if (output) 
+        output.send([0x90, 108, 0x00]);
     }
     bcontext.closePath();
 
@@ -261,8 +266,12 @@ function drawGrid() {
       bcontext.clearRect(cursorx, cursory, padwidth, padwidth);
       if (pads[idx].active[color]) {
         bcontext.fillStyle = filled;
+        if (output)
+          output.send([0x90, Math.floor(idx / 8) + 16*(idx%8), 0x7f]);
       } else {
         bcontext.fillStyle = '#999';
+        if (output)
+          output.send([0x90, Math.floor(idx / 8) + 16*(idx%8), 0x00]);
       }
       bcontext.beginPath();
       bcontext.arc(cursorx + padwidth/2, cursory + padwidth/2, padwidth/3, 0, 2*Math.PI);
@@ -454,56 +463,50 @@ function handleMIDIMessage(ev) {
   if (trig == 120) {
     select = true;
   }
-
+  console.log(trig);
   // Transposing the trigger number
-  if (0 <= trig && trig <= 7) {
-    trig += 56;
-  } else if (16 <= trig && trig <= 23) {
-    trig += 32;
-  } else if (32 <= trig && trig <= 39) {
-    trig += 8;
-  } else if (48 <= trig && trig <= 55) {
-    trig -= 16;
-  } else if (64 <= trig && trig <= 71) {
-    trig -= 40;
-  } else if (80 <= trig && trig <= 87) {
-    trig -= 64;
-  } else if (96 <= trig && trig <= 103) {
-    trig -= 88;
-  } else if (112 <= trig && trig <= 119) {
-    trig -= 112;
-  } else {
-    trig = -1;
-  }
+  trig = (8 * (trig%16)) + Math.floor(trig/16);
+  
   
   if (ev.data[2].toString(16) == "7f") {
-    // Actually play or display info
-    if (select) {
-      displayInfo(trig);
-    } else {
-      playSound(trig, 0);
+    if (trig == 70) {
+      bpm-=10;
+      frame = 0;
+      drawGrid();
+      return;
+    } else if (trig == 78) {
+      bpm+=10;
+      frame = 0;
+      drawGrid();
+      return;
+    } else if (trig == 86) {
+      resetAll();
+      drawGrid();
+      return;
+    } else if (trig == 94) {
+      color = c_red;
+      drawGrid();
+      return;
+    } else if (trig == 102) {
+      color = c_orange;
+      drawGrid();
+      return;
+    } else if (trig == 110) {
+      color = c_yellow;
+      drawGrid();
+      return;
+    } else if (trig == 118) {
+      color = c_green;
+      drawGrid();
+      return;
+    } else if (trig == 126) {
+      color = c_blue;
+      drawGrid();
+      return;
     }
 
-    $('#' + trig).css({'border': '2px solid #FF9900'});
-    $('#' + trig).css({'background-color': '#FF9900'});
-    output.send(ev.data);
-  } else {
-    revertBorder($('#' + trig));
-
-    output.send(ev.data);
-    if (parseInt(ev.data[1].toString()) == 120) {
-      select = false;
-    }
+    padClicked(trig);
   }
-}
-
-function revertBorder(i) {
-  if (i.attr('id') == beingEdited) {
-    i.css({'border': '2px solid #FF9900'});
-  } else {
-    i.css({'border': '2px solid #DDD'});
-  }
-  i.css("background-color", "white");
 }
 
 function success(midiAccess) {
@@ -512,11 +515,13 @@ function success(midiAccess) {
   if (inputs.size > 0) {
   	var inputsIter = inputs.values();	// Iterator
   	input = inputsIter.next().value;    // LAUNCHPAD
+    input = inputsIter.next().value;
     input.addEventListener("midimessage", handleMIDIMessage);
     outputs = midi.outputs;
     if (outputs.size) {
       var outputsIter = outputs.values();
-      output = outputsIter.next().value; 
+      output = outputsIter.next().value;
+      output = outputsIter.next().value;
       output = outputsIter.next().value; // LAUNCHPAD, hopefully
       //output.send( [0xb0, 0x00, 0x7f] );
     }
