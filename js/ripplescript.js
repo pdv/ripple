@@ -11,36 +11,33 @@ var COLORS = {
 } 
 
 // Canvas
-var QUALITY = 8;
+var QUALITY = 4;
 var WIDTH = Math.floor($(window).innerWidth() / QUALITY);
 var HEIGHT = Math.floor($(window).innerHeight() / QUALITY); 
 var topleftx, toplefty, padwidth;
 
+var meter;
+
 // Ripples
-var gcontext, image, data;
+var bcontext, rcontext;
+var image, data;
 var buffer1, buffer2, tempbuffer;
 
 // Time
 var bpm = 120;
 
-var container, canvas;
+var container, bcanvas, rcanvas;
 
 // Init
 $(document).ready(function() {
 
-  container = document.getElementById('container');
+  meter = new FPSMeter();
 
-  canvas = document.createElement('canvas');
-  canvas.width = WIDTH;
-  canvas.height = HEIGHT;
-  canvas.style.width = "99vw";
-  canvas.style.height = "99vh";
-  container.appendChild(canvas);
+  initCanvases();
 
-  gcontext = canvas.getContext("2d");
-  gcontext.fillStyle = "#FFFFFF";
-  gcontext.fillRect (0, 0, WIDTH, HEIGHT);
-  image = gcontext.getImageData(0, 0, WIDTH, HEIGHT);
+  rcontext.fillStyle = "#FFFFFF";
+  rcontext.fillRect (0, 0, WIDTH, HEIGHT);
+  image = rcontext.getImageData(0, 0, WIDTH, HEIGHT);
   data = image.data;
   
   buffer1 = [];
@@ -51,14 +48,6 @@ $(document).ready(function() {
     buffer2[i] = [0, 0, 0];
   }
 
-
-  var mindim = Math.min(WIDTH, HEIGHT) - (200 / QUALITY);
-  topleftx = Math.floor((WIDTH - mindim) / 2);
-  toplefty = Math.floor((HEIGHT - mindim) / 2);
-  padwidth = ~~(mindim / 15 + 0.5);
-  console.log("PW: " + padwidth);
-
-
   pads = [];
   for (var x = 0; x < 64; x++) {
     pads[x] = {
@@ -68,11 +57,9 @@ $(document).ready(function() {
     };
   }
 
-  gcontext.fillStyle = "#FFFFFF";
-  gcontext.fillRect (0, 0, WIDTH, HEIGHT);
   drawGrid();
 
-  canvas.addEventListener('click', checkClickBox, false);
+  bcanvas.addEventListener('click', checkClickBox, false);
 
   // AudioContext
   try {
@@ -84,7 +71,37 @@ $(document).ready(function() {
 
   navigator.requestMIDIAccess().then(success, failure);
   setInterval(loop, 1000 / 60);
+
 });
+
+function initCanvases() {
+  container = document.getElementById('container');
+
+  rcanvas = document.createElement('canvas');
+  rcanvas.id = "rcanvas";
+  rcanvas.width = WIDTH;
+  rcanvas.height = HEIGHT;
+  rcanvas.style.width = "99vw";
+  rcanvas.style.height = "99vh";
+  container.appendChild(rcanvas);
+
+  var bwidth = $(window).innerWidth();
+  var bheight = $(window).innerHeight();
+  bcanvas = document.createElement('canvas');
+  bcanvas.id = "bcanvas";
+  bcanvas.width = bwidth;
+  bcanvas.height = bheight;
+  bcanvas.style.width = "99vw";
+  bcanvas.style.height = "99vh";
+  container.appendChild(bcanvas);
+  bcontext = bcanvas.getContext("2d");
+  rcontext = rcanvas.getContext("2d");
+
+  var mindim = Math.min(bwidth, bheight) - 200;
+  topleftx = Math.floor((bwidth - mindim) / 2);
+  toplefty = Math.floor((bheight - mindim) / 2);
+  padwidth = ~~(mindim / 15 + 0.5);
+}
 
 var frame = 0;
 
@@ -108,35 +125,37 @@ function loop() {
     var down = buffer1[i + WIDTH];
     var right = buffer1[i + 1];
 
-    if (up[0] < 0.5 && down[0] < 0.5 && left[0] < 0.5 && right[0] < 0.5) {
+    
+    var thresh = 1.5;
+    if (up[0] < thresh && down[0] < thresh && left[0] < thresh && right[0] < thresh) {
       continue;
     }
+    
+    // R, G, B
+    for (var j = 0; j < 3; j++) {
+      pixel[j] = ((up[j] + left[j] + down[j] + right[j]) / 2.001) - buffer2[i][j];
+      pixel[j] = pixel[j] < 0 ? 0 : pixel[j];
+      buffer2[i][j] = pixel[j];
+      pixel[j] = 255 - pixel[j];
+    }
 
-    pixel[0] = ((up[0] + left[0] + down[0] + right[0]) / 2) - buffer2[i][0];
-    pixel[1] = ((up[1] + left[1] + down[1] + right[1]) / 2) - buffer2[i][1];
-    pixel[2] = ((up[2] + left[2] + down[2] + right[2]) / 2) - buffer2[i][2];
-    //pixel[0] -= pixel[0] >> 20;
-    //pixel[1] -= pixel[1] >> 20;
-    //pixel[2] -= pixel[2] >> 20;
-
-    pixel[0] = pixel[0] < 0 ? 0 : pixel[0];
-    pixel[1] = pixel[1] < 0 ? 0 : pixel[1];
-    pixel[2] = pixel[2] < 0 ? 0 : pixel[2];
-
-    buffer2[i][0] = pixel[0];
-    buffer2[i][1] = pixel[1];
-    buffer2[i][2] = pixel[2];
-
-    data[i * 4] = 255 - pixel[0];
-    data[i * 4 + 1] = 255 - pixel[1];
-    data[i * 4 + 2] = 255 - pixel[2];
+    var psize = 5;
+    for (var j = 0; j < psize; j++) {
+      for (var k = 0; k < psize; k++) {
+        var idx = (j * WIDTH + (i + k)) * 4;
+        data[idx] = pixel[0];
+        data[idx + 1] = pixel[1];
+        data[idx + 2] = pixel[2];
+      }
+    }
+    
   }
   tempbuffer = buffer1;
   buffer1 = buffer2;
   buffer2 = tempbuffer;
 
-  gcontext.putImageData(image, 0, 0);
-  drawGrid();
+  rcontext.putImageData(image, 0, 0);
+  meter.tick();
 }
 
 // ON BEAT *****************************************
@@ -159,8 +178,8 @@ function drawGrid() {
   var idx = 0;
   for (var x = 0; x < 8; x++) {
     for (var y = 0; y < 8; y++) {
-      gcontext.fillStyle = 'rgb(' + pads[idx].color[0] + ',' + pads[idx].color[1] + ',' + pads[idx].color[2] + ')';
-      gcontext.fillRect(cursorx, cursory, padwidth, padwidth);
+      bcontext.fillStyle = 'rgb(' + pads[idx].color[0] + ',' + pads[idx].color[1] + ',' + pads[idx].color[2] + ')';
+      bcontext.fillRect(cursorx, cursory, padwidth, padwidth);
       cursory += padwidth * 2;
       idx++;
     }
@@ -172,7 +191,7 @@ function drawGrid() {
 function drop(i, color) {
   var cx = topleftx + (padwidth/2) + 2 * padwidth * Math.floor(i/8.0); 
   var cy = toplefty + (padwidth/2) + 2 * padwidth * (i % 8);
-  var dropidx = Math.floor(cx) + (Math.floor(cy) * WIDTH);
+  var dropidx = Math.floor(cx / QUALITY) + (Math.floor(cy / QUALITY) * WIDTH);
   buffer1[dropidx][0] = 255 - color[0];
   buffer1[dropidx][1] = 255 - color[1];
   buffer1[dropidx][2] = 255 - color[2];
@@ -181,8 +200,8 @@ function drop(i, color) {
 // CLICK DETECTION *********************************
 
 function checkClickBox(e) {
-  var ex = ~~(e.pageX / QUALITY + 0.5);
-  var ey = ~~(e.pageY / QUALITY + 1.5);
+  var ex = ~~(e.pageX + 0.5);
+  var ey = ~~(e.pageY + 1.5);
   
   console.log(topleftx + " " + toplefty + " " + padwidth);
   if (ex < topleftx || ex > topleftx + 15*padwidth || 
@@ -229,6 +248,7 @@ function padClicked(i) {
     pads[i].active = 1;
     drop(i, pads[i].color);
   }
+  drawGrid();
 }
 
 
