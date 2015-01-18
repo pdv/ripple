@@ -2,16 +2,16 @@ var context;
 var pads;
 
 var COLORS = {
-  GREY: "#777777",
-  RED: "#CE1836",
-  ORANGE: "F85931",
-  YELLOW: "EDB92E",
-  GREEN: "A3A948",
-  BLUE: "009989"
+  GREY: [119, 119, 119],
+  RED: [206, 24, 54],
+  ORANGE: [248, 89, 49],
+  YELLOW: [237, 185, 46],
+  GREEN: [163, 169, 72],
+  BLUE: [0, 153, 137],
 } 
 
 // Canvas
-var QUALITY = 1;
+var QUALITY = 8;
 var WIDTH = Math.floor($(window).innerWidth() / QUALITY);
 var HEIGHT = Math.floor($(window).innerHeight() / QUALITY); 
 var topleftx, toplefty, padwidth;
@@ -22,7 +22,6 @@ var buffer1, buffer2, tempbuffer;
 
 // Time
 var bpm = 120;
-var beat = 0;
 
 var container, canvas;
 
@@ -39,15 +38,26 @@ $(document).ready(function() {
   container.appendChild(canvas);
 
   gcontext = canvas.getContext("2d");
-  gcontext.fillStyle = "rgb(255, 255, 255)";
+  gcontext.fillStyle = "#FFFFFF";
   gcontext.fillRect (0, 0, WIDTH, HEIGHT);
   image = gcontext.getImageData(0, 0, WIDTH, HEIGHT);
   data = image.data;
+  
+  buffer1 = [];
+  buffer2 = [];
+  SIZE = WIDTH * HEIGHT;
+  for (var i = 0; i < SIZE; i++) {
+    buffer1[i] = [0, 0, 0];
+    buffer2[i] = [0, 0, 0];
+  }
+
 
   var mindim = Math.min(WIDTH, HEIGHT) - (200 / QUALITY);
   topleftx = Math.floor((WIDTH - mindim) / 2);
   toplefty = Math.floor((HEIGHT - mindim) / 2);
-  padwidth = mindim / 15;
+  padwidth = ~~(mindim / 15 + 0.5);
+  console.log("PW: " + padwidth);
+
 
   pads = [];
   for (var x = 0; x < 64; x++) {
@@ -58,14 +68,11 @@ $(document).ready(function() {
     };
   }
 
+  gcontext.fillStyle = "#FFFFFF";
+  gcontext.fillRect (0, 0, WIDTH, HEIGHT);
   drawGrid();
 
-  canvas.addEventListener('click', function(event) {
-    checkClickBox(event);
-  });
-
-  buffer1 = [];
-  buffer2 = [];
+  canvas.addEventListener('click', checkClickBox, false);
 
   // AudioContext
   try {
@@ -76,9 +83,72 @@ $(document).ready(function() {
   }
 
   navigator.requestMIDIAccess().then(success, failure);
+  setInterval(loop, 1000 / 60);
 });
 
-var beingEdited = 0;
+var frame = 0;
+
+function loop() {
+
+  if (frame % 30 == 0) {
+    if (frame == (30 * 8)) {
+      frame = 0;
+    }
+    playbeat(frame / 30);
+  }
+  frame++;
+
+  var pixel = [0, 0, 0];
+  var iMax = (WIDTH * HEIGHT) - WIDTH;
+
+  for (var i = WIDTH; i < iMax; i++) {
+    
+    var up = buffer1[i - WIDTH];
+    var left = buffer1[i - 1];
+    var down = buffer1[i + WIDTH];
+    var right = buffer1[i + 1];
+
+    if (up[0] < 0.5 && down[0] < 0.5 && left[0] < 0.5 && right[0] < 0.5) {
+      continue;
+    }
+
+    pixel[0] = ((up[0] + left[0] + down[0] + right[0]) / 2) - buffer2[i][0];
+    pixel[1] = ((up[1] + left[1] + down[1] + right[1]) / 2) - buffer2[i][1];
+    pixel[2] = ((up[2] + left[2] + down[2] + right[2]) / 2) - buffer2[i][2];
+    //pixel[0] -= pixel[0] >> 20;
+    //pixel[1] -= pixel[1] >> 20;
+    //pixel[2] -= pixel[2] >> 20;
+
+    pixel[0] = pixel[0] < 0 ? 0 : pixel[0];
+    pixel[1] = pixel[1] < 0 ? 0 : pixel[1];
+    pixel[2] = pixel[2] < 0 ? 0 : pixel[2];
+
+    buffer2[i][0] = pixel[0];
+    buffer2[i][1] = pixel[1];
+    buffer2[i][2] = pixel[2];
+
+    data[i * 4] = 255 - pixel[0];
+    data[i * 4 + 1] = 255 - pixel[1];
+    data[i * 4 + 2] = 255 - pixel[2];
+  }
+  tempbuffer = buffer1;
+  buffer1 = buffer2;
+  buffer2 = tempbuffer;
+
+  gcontext.putImageData(image, 0, 0);
+  drawGrid();
+}
+
+// ON BEAT *****************************************
+
+function playbeat(beat) {
+  console.log(beat);
+  for (var i = beat * 8; i < beat * 8 + 8; i++) {
+    if (pads[i].active != 0) {
+      drop(i, pads[i].color);
+    }
+  }
+}
 
 // DRAWING *****************************************
 
@@ -89,7 +159,7 @@ function drawGrid() {
   var idx = 0;
   for (var x = 0; x < 8; x++) {
     for (var y = 0; y < 8; y++) {
-      gcontext.fillStyle = pads[idx].color;
+      gcontext.fillStyle = 'rgb(' + pads[idx].color[0] + ',' + pads[idx].color[1] + ',' + pads[idx].color[2] + ')';
       gcontext.fillRect(cursorx, cursory, padwidth, padwidth);
       cursory += padwidth * 2;
       idx++;
@@ -99,11 +169,20 @@ function drawGrid() {
   }
 }
 
+function drop(i, color) {
+  var cx = topleftx + (padwidth/2) + 2 * padwidth * Math.floor(i/8.0); 
+  var cy = toplefty + (padwidth/2) + 2 * padwidth * (i % 8);
+  var dropidx = Math.floor(cx) + (Math.floor(cy) * WIDTH);
+  buffer1[dropidx][0] = 255 - color[0];
+  buffer1[dropidx][1] = 255 - color[1];
+  buffer1[dropidx][2] = 255 - color[2];
+}
+
 // CLICK DETECTION *********************************
 
 function checkClickBox(e) {
-  var ex = e.pageX / QUALITY;
-  var ey = e.pageY / QUALITY;
+  var ex = ~~(e.pageX / QUALITY + 0.5);
+  var ey = ~~(e.pageY / QUALITY + 1.5);
   
   console.log(topleftx + " " + toplefty + " " + padwidth);
   if (ex < topleftx || ex > topleftx + 15*padwidth || 
@@ -126,11 +205,9 @@ console.log(ex + " " + ey + ": clicked");
       if (ex >= cursorx && ex <= cursorx + padwidth && 
           ey >= cursory && ey <= cursory + padwidth) {
         padClicked(idx);
-        drawGrid();
         return;
       }
       cursory += padwidth * 2;
-      
     }
     cursorx += padwidth * 2;
     cursory = toplefty;
@@ -140,7 +217,18 @@ console.log(ex + " " + ey + ": clicked");
 
 function padClicked(i) {
   console.log(i);
-  pads[i].color = COLORS.RED;
+  if (pads[i].active == 1) {
+    pads[i].color = COLORS.BLUE;
+    pads[i].active = 2;
+    drop(i, pads[i].color);
+  } else if (pads[i].active == 2) {
+    pads[i].color = COLORS.GREY;
+    pads[i].active = 0;
+  } else {
+    pads[i].color = COLORS.RED;
+    pads[i].active = 1;
+    drop(i, pads[i].color);
+  }
 }
 
 
