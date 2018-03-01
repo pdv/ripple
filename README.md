@@ -1,4 +1,3 @@
 # ripple
+A playful sequencer
 PennApps Winter 2015
-
-http://pdv.me/ripple
